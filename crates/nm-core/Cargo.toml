@@ -1,0 +1,13 @@
+[package]
+name = "nm-core"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+zbus = "5"
+zvariant = "5"
+futures-util = "0.3"
+futures-core = "0.3"
+serde = "1"

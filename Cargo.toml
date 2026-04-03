@@ -1,0 +1,15 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/nm-core",
+    "crates/nm-codegen",
+    "crates/nm-bindings",
+]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+rust-version = "1.92.0"
+
+[workspace.dependencies]
