@@ -150,6 +150,10 @@ fn normalize_bitflags_literal(value: &str) -> String {
 fn render_doc(lines: &[String], indent: &str) -> String {
     let mut out = String::new();
 
+    if lines.is_empty() {
+        return String::new();
+    }
+
     for line in lines {
         if line.trim().is_empty() {
             out.push_str(&format!("{indent}///\n"));
