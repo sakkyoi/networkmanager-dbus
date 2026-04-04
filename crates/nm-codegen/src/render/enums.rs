@@ -1,6 +1,6 @@
 use crate::{
     config::{RenderConfig, ReprKind},
-    model::types::{EnumDef, EnumValue},
+    model::types::{EnumDef, EnumValue, Version},
 };
 
 pub fn render_types_module(enums: &[EnumDef], config: &RenderConfig) -> String {
@@ -15,6 +15,7 @@ pub fn render_types_module(enums: &[EnumDef], config: &RenderConfig) -> String {
 
     for en in enums {
         maybe_warn_bitflags_misclassification(en);
+        maybe_warn_duplicate_values(en);
         out.push_str(&render_enum(en, config));
         out.push_str("\n\n");
     }
@@ -34,19 +35,27 @@ fn render_normal_enum(e: &EnumDef, config: &RenderConfig) -> String {
     let repr = detect_repr(e, config);
     let repr_ty = repr.rust_type();
     let normalizer = NameNormalizer::new(e, config);
+    let groups = group_values_by_numeric(e);
 
     let mut out = String::new();
 
     out.push_str(&render_source_doc(e.source_url.as_deref(), ""));
     out.push_str(&render_doc(&e.description, ""));
+    out.push_str(&render_enum_since_deprecated_doc(e.since.as_ref(), e.deprecated.as_ref(), ""));
     out.push_str(&format!(
         "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum {} {{\n",
         e.name
     ));
 
-    for v in &e.values {
-        let variant_name = normalizer.normalize_variant(&v.name);
-        out.push_str(&render_doc(&v.description, "    "));
+    for group in &groups {
+        let canonical = pick_canonical_entry(&group.entries);
+        let variant_name = normalizer.normalize_variant(&canonical.name);
+        out.push_str(&render_doc(&canonical.description, "    "));
+        out.push_str(&render_since_deprecated_doc(
+            canonical.since.as_ref(),
+            canonical.deprecated.as_ref(),
+            "    ",
+        ));
         out.push_str(&format!("    {},\n\n", variant_name));
     }
 
@@ -62,11 +71,12 @@ fn render_normal_enum(e: &EnumDef, config: &RenderConfig) -> String {
         repr_ty
     ));
 
-    for v in &e.values {
-        let variant_name = normalizer.normalize_variant(&v.name);
+    for group in &groups {
+        let canonical = pick_canonical_entry(&group.entries);
+        let variant_name = normalizer.normalize_variant(&canonical.name);
         out.push_str(&format!(
             "            {} => Self::{},\n",
-            normalize_numeric_literal(&v.value, repr),
+            normalize_numeric_literal(group.value, repr),
             variant_name
         ));
     }
@@ -80,18 +90,46 @@ fn render_normal_enum(e: &EnumDef, config: &RenderConfig) -> String {
         e.name
     ));
 
-    for v in &e.values {
-        let variant_name = normalizer.normalize_variant(&v.name);
+    for group in &groups {
+        let canonical = pick_canonical_entry(&group.entries);
+        let variant_name = normalizer.normalize_variant(&canonical.name);
         out.push_str(&format!(
             "            {}::{} => {},\n",
             e.name,
             variant_name,
-            normalize_numeric_literal(&v.value, repr)
+            normalize_numeric_literal(&group.value, repr)
         ));
     }
 
     out.push_str(&format!("            {}::Other(v) => v,\n", e.name));
     out.push_str("        }\n    }\n}\n");
+
+    let alias_groups = collect_aliases(&groups);
+    if !alias_groups.is_empty() {
+        out.push_str("\n");
+        out.push_str(&format!("impl {} {{\n", e.name));
+
+        for alias in alias_groups {
+            let alias_name = normalizer.normalize_variant(&alias.alias.name);
+            let canonical_name = normalizer.normalize_variant(&alias.canonical.name);
+
+            out.push_str("    #[allow(non_upper_case_globals)]\n");
+
+            if alias.alias.deprecated.is_some() {
+                out.push_str(&format!(
+                    "    #[deprecated(note = \"Use `{}` instead\")]\n",
+                    canonical_name
+                ));
+            }
+
+            out.push_str(&format!(
+                "    pub const {}: Self = Self::{};\n\n",
+                alias_name, canonical_name
+            ));
+        }
+
+        out.push_str("}\n");
+    }
 
     out
 }
@@ -169,6 +207,35 @@ fn render_doc(lines: &[String], indent: &str) -> String {
         } else {
             out.push_str(&format!("{indent}/// {}\n", line.trim()));
         }
+    }
+
+    out
+}
+
+fn render_enum_since_deprecated_doc(
+    since: Option<&Version>,
+    deprecated: Option<&Version>,
+    indent: &str,
+) -> String {
+    render_since_deprecated_doc(since, deprecated, indent)
+}
+
+fn render_since_deprecated_doc(
+    since: Option<&Version>,
+    deprecated: Option<&Version>,
+    indent: &str,
+) -> String {
+    let mut out = String::new();
+
+    if let Some(v) = since {
+        out.push_str(&format!("{indent}/// Since: {}.{}\n", v.major, v.minor));
+    }
+
+    if let Some(v) = deprecated {
+        out.push_str(&format!(
+            "{indent}/// Deprecated since: {}.{}",
+            v.major, v.minor
+        ));
     }
 
     out
@@ -395,6 +462,26 @@ fn maybe_warn_bitflags_misclassification(e: &EnumDef) {
     }
 }
 
+fn maybe_warn_duplicate_values(e: &EnumDef) {
+    let groups = group_values_by_numeric(e);
+
+    for group in groups {
+        if group.entries.len() > 1 {
+            let names = group
+                .entries
+                .iter()
+                .map(|v| v.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            eprintln!(
+                "[WARN] enum {:?} has multiple names for value {}: {}",
+                e.name, group.value, names
+            );
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum NumericShape {
     Unknown,
@@ -448,4 +535,93 @@ fn classify_numeric_shape(values: &[EnumValue]) -> NumericShape {
 
 fn is_power_of_two(n: u32) -> bool {
     n != 0 && (n & (n - 1)) == 0
+}
+
+struct ValueGroup<'a> {
+    value: &'a str,
+    entries: Vec<&'a EnumValue>,
+}
+
+struct AliasEntry<'a> {
+    canonical: &'a EnumValue,
+    alias: &'a EnumValue,
+}
+
+fn group_values_by_numeric<'a>(e: &'a EnumDef) -> Vec<ValueGroup<'a>> {
+    let mut groups: Vec<ValueGroup<'a>> = Vec::new();
+
+    for value in &e.values {
+        let key = value.value.trim();
+
+        if let Some(group) = groups.iter_mut().find(|g| g.value == key) {
+            group.entries.push(value);
+        } else {
+            groups.push(ValueGroup {
+                value: key,
+                entries: vec![value],
+            });
+        }
+    }
+
+    groups
+}
+
+fn pick_canonical_entry<'a>(entries: &[&'a EnumValue]) -> &'a EnumValue {
+    let mut best = entries[0];
+
+    for candidate in entries.iter().copied().skip(1) {
+        if is_better_canonical(candidate, best) {
+            best = candidate;
+        }
+    }
+
+    best
+}
+
+fn is_better_canonical(candidate: &EnumValue, current: &EnumValue) -> bool {
+    match (candidate.deprecated.is_none(), current.deprecated.is_none()) {
+        (true, false) => return true,
+        (false, true) => return false,
+        _ => {}
+    }
+
+    match compare_option_version(candidate.since.as_ref(), current.since.as_ref()) {
+        std::cmp::Ordering::Greater => true,
+        std::cmp::Ordering::Less => false,
+        std::cmp::Ordering::Equal => true,
+    }
+}
+
+fn compare_option_version(a: Option<&Version>, b: Option<&Version>) -> std::cmp::Ordering {
+    match (a, b) {
+        (Some(a), Some(b)) => a.cmp(b),
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (None, None) => std::cmp::Ordering::Equal,
+    }
+}
+
+fn collect_aliases<'a>(groups: &'a [ValueGroup<'a>]) -> Vec<AliasEntry<'a>> {
+    let mut aliases = Vec::new();
+
+    for group in groups {
+        if group.entries.len() <= 1 {
+            continue;
+        }
+
+        let canonical = pick_canonical_entry(&group.entries);
+
+        for entry in &group.entries {
+            if std::ptr::eq(*entry, canonical) {
+                continue;
+            }
+
+            aliases.push(AliasEntry {
+                canonical,
+                alias: entry,
+            });
+        }
+    }
+
+    aliases
 }

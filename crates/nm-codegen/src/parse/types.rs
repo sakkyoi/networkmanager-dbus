@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use scraper::{ElementRef, Html, Selector};
 
-use crate::model::types::{EnumDef, EnumValue, TypesPage};
+use crate::model::types::{EnumDef, EnumValue, TypesPage, Version};
 
 pub fn parse_types_page(html: &str, base_url: &str) -> Result<TypesPage> {
     let doc = Html::parse_document(html);
@@ -29,8 +29,9 @@ pub fn parse_types_page(html: &str, base_url: &str) -> Result<TypesPage> {
         };
 
         let description = collect_doc_lines_after_h3(&h3);
-        let values_section = find_values_section(&section, &refsect3_sel, &h4_sel);
+        let (enum_since, enum_deprecated) = extract_since_and_deprecated(&description);
 
+        let values_section = find_values_section(&section, &refsect3_sel, &h4_sel);
         let Some(values_section) = values_section else {
             continue;
         };
@@ -64,10 +65,14 @@ pub fn parse_types_page(html: &str, base_url: &str) -> Result<TypesPage> {
                 .map(collect_doc_lines_from_container)
                 .unwrap_or_default();
 
+            let (since, deprecated) = extract_since_and_deprecated(&description);
+
             values.push(EnumValue {
                 name,
                 value,
                 description,
+                since,
+                deprecated,
             });
         }
 
@@ -77,6 +82,8 @@ pub fn parse_types_page(html: &str, base_url: &str) -> Result<TypesPage> {
                 description,
                 values,
                 source_url,
+                since: enum_since,
+                deprecated: enum_deprecated,
             });
         }
     }
@@ -205,6 +212,36 @@ fn extract_doc_lines_from_node(node: &ElementRef<'_>) -> Vec<String> {
         }
         _ => vec![],
     }
+}
+
+fn extract_since_and_deprecated(lines: &[String]) -> (Option<Version>, Option<Version>) {
+    let joined = lines.join("\n");
+    let since = extract_version_after(&joined, "Since:");
+    let deprecated = extract_version_after(&joined, "Deprecated:");
+    (since, deprecated)
+}
+
+fn extract_version_after(text: &str, marker: &str) -> Option<Version> {
+    let idx = text.find(marker)?;
+    let tail = text[idx + marker.len()..].trim_start();
+
+    let mut raw = String::new();
+    for ch in tail.chars() {
+        if ch.is_ascii_digit() || ch == '.' {
+            raw.push(ch);
+        } else {
+            break;
+        }
+    }
+
+    parse_version(&raw)
+}
+
+fn parse_version(raw: &str) -> Option<Version> {
+    let mut parts = raw.split(".");
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    Some(Version { major, minor })
 }
 
 fn trim_trailing_blank_lines(lines: &mut Vec<String>) {

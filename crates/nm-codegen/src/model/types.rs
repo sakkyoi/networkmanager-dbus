@@ -3,12 +3,20 @@ pub struct TypesPage {
     pub enums: Vec<EnumDef>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Version {
+    pub major: u32,
+    pub minor: u32,
+}
+
 #[derive(Debug, Clone)]
 pub struct EnumDef {
     pub name: String,
     pub description: Vec<String>,
     pub values: Vec<EnumValue>,
     pub source_url: Option<String>,
+    pub since: Option<Version>,
+    pub deprecated: Option<Version>,
 }
 
 impl EnumDef {
@@ -26,6 +34,8 @@ pub struct EnumValue {
     pub name: String,
     pub value: String,
     pub description: Vec<String>,
+    pub since: Option<Version>,
+    pub deprecated: Option<Version>,
 }
 
 impl EnumValue {
