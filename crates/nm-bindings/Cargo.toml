@@ -6,3 +6,9 @@ version.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+bitflags = "2"
+nm-core = { path = "../nm-core" }
+
+[build-dependencies]
+anyhow = "1"
+nm-codegen = { path = "../nm-codegen" }

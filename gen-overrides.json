@@ -1,0 +1,22 @@
+{
+  "repr_overrides": {
+
+  },
+  "variant_name_overrides": {
+    "NMDeviceType": {
+      "6LOWPAN": "SixLowpan"
+    }
+  },
+  "enum_prefix_overrides": {
+    "NMConnectivityState": "NM_CONNECTIVITY",
+    "NMDeviceCapabilities": "NM_DEVICE_CAP",
+    "NMDeviceWifiCapabilities": "NM_WIFI_DEVICE_CAP",
+    "NM80211ApFlags": "NM_802_11_AP_FLAGS",
+    "NM80211ApSecurityFlags": "NM_802_11_AP_SEC",
+    "NM80211Mode": "NM_802_11_MODE",
+    "NMBluetoothCapabilities": "NM_BT_CAPABILITY",
+    "NMDeviceModemCapabilities": "NM_DEVICE_MODEM_CAPABILITY",
+    "NMSecretAgentCapabilities": "NM_SECRET_AGENT_CAPABILITY",
+    "NMIPTunnelMode": "NM_IP_TUNNEL_MODE"
+  }
+}
