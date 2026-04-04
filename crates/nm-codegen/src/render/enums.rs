@@ -37,6 +37,7 @@ fn render_normal_enum(e: &EnumDef, config: &RenderConfig) -> String {
 
     let mut out = String::new();
 
+    out.push_str(&render_source_doc(e.source_url.as_deref(), ""));
     out.push_str(&render_doc(&e.description, ""));
     out.push_str(&format!(
         "#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum {} {{\n",
@@ -99,6 +100,7 @@ fn render_bitflags(e: &EnumDef, config: &RenderConfig) -> String {
     let normalizer = NameNormalizer::new(e, config);
     let mut out = String::new();
 
+    out.push_str(&render_source_doc(e.source_url.as_deref(), ""));
     out.push_str(&render_doc(&e.description, ""));
     out.push_str(&format!(
         "bitflags! {{\n    pub struct {}: u32 {{\n",
@@ -145,6 +147,13 @@ fn normalize_numeric_literal(value: &str, repr: ReprKind) -> String {
 
 fn normalize_bitflags_literal(value: &str) -> String {
     format!("{}u32", value.trim())
+}
+
+fn render_source_doc(source_url: Option<&str>, ident: &str) -> String {
+    match source_url {
+        Some(url) => format!("{ident}/// Source: {url}\n{ident}///\n"),
+        None => String::new(),
+    }
 }
 
 fn render_doc(lines: &[String], indent: &str) -> String {
@@ -209,7 +218,7 @@ impl<'a> NameNormalizer<'a> {
         }
 
         if result.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
-            result = format!("V{}", result);
+            result = format!("_{}", result);
         }
 
         result
@@ -224,10 +233,26 @@ impl<'a> NameNormalizer<'a> {
             .get(self.enum_name)
             .and_then(|m| m.get(tail))
         {
-            return screaming_snake_from_pascal(mapped);
+            return mapped.clone();
         }
 
-        normalize_screaming_snake(tail)
+        let mut result = tail
+            .trim_matches('_')
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_ascii_uppercase())
+            .collect::<Vec<_>>()
+            .join("_");
+
+        if result.is_empty() {
+            result = "Unknown".to_string();
+        }
+
+        if result.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+            result = format!("_{}", result);
+        }
+
+        result
     }
 
     fn strip_prefix<'b>(&self, raw: &'b str) -> &'b str {
@@ -296,16 +321,6 @@ fn strip_one_trailing_s(s: &str) -> &str {
     s.strip_suffix('S').unwrap_or(s)
 }
 
-fn normalize_screaming_snake(input: &str) -> String {
-    input
-        .trim_matches('_')
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_ascii_uppercase())
-        .collect::<Vec<_>>()
-        .join("_")
-}
-
 fn camel_to_screaming_snake(input: &str) -> String {
     let chars: Vec<char> = input.chars().collect();
     let mut out = String::new();
@@ -353,17 +368,6 @@ fn pascal_part(part: &str) -> String {
         }
         None => String::new(),
     }
-}
-
-fn screaming_snake_from_pascal(input: &str) -> String {
-    let mut out = String::new();
-    for (i, ch) in input.chars().enumerate() {
-        if ch.is_ascii_uppercase() && i != 0 {
-            out.push('_');
-        }
-        out.push(ch.to_ascii_uppercase());
-    }
-    out
 }
 
 fn maybe_warn_bitflags_misclassification(e: &EnumDef) {

@@ -25,7 +25,7 @@ pub fn parse_snapshot(snapshot_dir: &Path) -> Result<ParsedSnapshot> {
             SnapshotPageKind::Types => {
                 let html = fs::read_to_string(&path)
                     .with_context(|| format!("failed to read {}", path.display()))?;
-                snapshot.types = parse_types_page(&html)?;
+                snapshot.types = parse_types_page(&html, &page.source_url)?;
             }
             SnapshotPageKind::Interface => {
                 todo!()

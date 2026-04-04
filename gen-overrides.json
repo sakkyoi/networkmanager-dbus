@@ -5,6 +5,9 @@
   "variant_name_overrides": {
     "NMDeviceType": {
       "6LOWPAN": "SixLowpan"
+    },
+    "NMDeviceModemCapabilities": {
+      "5GNR": "FIVE_GNR"
     }
   },
   "enum_prefix_overrides": {

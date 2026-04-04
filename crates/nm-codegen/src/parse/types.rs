@@ -3,7 +3,7 @@ use scraper::{ElementRef, Html, Selector};
 
 use crate::model::types::{EnumDef, EnumValue, TypesPage};
 
-pub fn parse_types_page(html: &str) -> Result<TypesPage> {
+pub fn parse_types_page(html: &str, base_url: &str) -> Result<TypesPage> {
     let doc = Html::parse_document(html);
 
     let section_sel = Selector::parse(".refsect2").unwrap();
@@ -34,6 +34,10 @@ pub fn parse_types_page(html: &str) -> Result<TypesPage> {
         let Some(values_section) = values_section else {
             continue;
         };
+
+        let source_url = find_enum_anchor(&section)
+            .map(|anchor| format!("{base_url}#{anchor}"))
+            .or_else(|| Some(base_url.to_string()));
 
         let mut values = Vec::new();
 
@@ -72,6 +76,7 @@ pub fn parse_types_page(html: &str) -> Result<TypesPage> {
                 name: enum_name.to_string(),
                 description,
                 values,
+                source_url,
             });
         }
     }
@@ -92,6 +97,22 @@ fn find_values_section<'a>(
         let title = normalize_text(&h4.text().collect::<String>());
         if title == "Values" {
             return Some(sub);
+        }
+    }
+
+    None
+}
+
+fn find_enum_anchor(section: &ElementRef<'_>) -> Option<String> {
+    for child in section.children() {
+        let Some(el) = ElementRef::wrap(child) else {
+            continue;
+        };
+
+        if el.value().name() == "a" {
+            if let Some(name) = el.value().attr("name") {
+                return Some(name.to_string());
+            }
         }
     }
 

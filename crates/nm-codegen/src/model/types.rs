@@ -8,6 +8,7 @@ pub struct EnumDef {
     pub name: String,
     pub description: Vec<String>,
     pub values: Vec<EnumValue>,
+    pub source_url: Option<String>,
 }
 
 impl EnumDef {
