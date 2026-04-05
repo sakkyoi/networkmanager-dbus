@@ -1,12 +1,8 @@
+use crate::model::common::Version;
+
 #[derive(Debug, Clone, Default)]
 pub struct TypesPage {
     pub enums: Vec<EnumDef>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Version {
-    pub major: u32,
-    pub minor: u32,
 }
 
 #[derive(Debug, Clone)]

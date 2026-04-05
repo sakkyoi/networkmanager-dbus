@@ -2,6 +2,8 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use std::{collections::HashMap, fs, path::Path};
 
+use crate::model::common::Version;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ReprKind {
@@ -28,6 +30,9 @@ pub struct RenderConfig {
 
     #[serde(default)]
     pub enum_prefix_overrides: HashMap<String, String>,
+
+    #[serde(default)]
+    pub target_version: Option<Version>,
 }
 
 pub fn load_render_config(path: &Path) -> Result<RenderConfig> {

@@ -21,5 +21,6 @@
     "NMDeviceModemCapabilities": "NM_DEVICE_MODEM_CAPABILITY",
     "NMSecretAgentCapabilities": "NM_SECRET_AGENT_CAPABILITY",
     "NMIPTunnelMode": "NM_IP_TUNNEL_MODE"
-  }
+  },
+  "target_version": null
 }

@@ -1,7 +1,10 @@
 use anyhow::{anyhow, Result};
 use scraper::{ElementRef, Html, Selector};
 
-use crate::model::types::{EnumDef, EnumValue, TypesPage, Version};
+use crate::model::{
+    common::Version,
+    types::{EnumDef, EnumValue, TypesPage},
+};
 
 pub fn parse_types_page(html: &str, base_url: &str) -> Result<TypesPage> {
     let doc = Html::parse_document(html);
