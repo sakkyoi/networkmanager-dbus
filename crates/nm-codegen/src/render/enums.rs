@@ -291,20 +291,23 @@ fn render_since_deprecated_doc(
     deprecated: Option<&Version>,
     indent: &str,
 ) -> String {
-    let mut out = String::new();
+    if since.is_none() && deprecated.is_none() {
+        return String::new();
+    }
+
+    let mut parts = Vec::new();
 
     if let Some(v) = since {
-        out.push_str(&format!("{indent}/// Since: {}.{}\n", v.major, v.minor));
+        parts.push(format!("Since {}.{}", v.major, v.minor));
     }
 
     if let Some(v) = deprecated {
-        out.push_str(&format!(
-            "{indent}/// Deprecated since: {}.{}\n",
-            v.major, v.minor
-        ));
+        parts.push(format!("Deprecated since {}.{}", v.major, v.minor));
     }
 
-    out
+    let joined = parts.join("; ");
+
+    format!("{indent}///\n{indent}/// _Generator note:_ {}.\n", joined)
 }
 
 fn render_alias_doc(

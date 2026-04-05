@@ -28,7 +28,7 @@ pub fn parse_snapshot(snapshot_dir: &Path) -> Result<ParsedSnapshot> {
                 snapshot.types = parse_types_page(&html, &page.source_url)?;
             }
             SnapshotPageKind::Interface => {
-                todo!()
+                // todo!()
             }
             SnapshotPageKind::SpecIndex | SnapshotPageKind::Other => {}
         }
