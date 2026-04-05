@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use std::{fs, path::Path};
 
-use crate::model::spec::{ParsedSnapshot, SnapshotManifest, SnapshotPageKind};
-use crate::parse::types::parse_types_page;
+use crate::{
+    model::spec::{ParsedSnapshot, SnapshotManifest, SnapshotPageKind},
+    parse::{interface::parse_interface_page, types::parse_types_page},
+};
 
 pub fn parse_snapshot(snapshot_dir: &Path) -> Result<ParsedSnapshot> {
     let manifest_path = snapshot_dir.join("manifest.json");
@@ -28,7 +30,22 @@ pub fn parse_snapshot(snapshot_dir: &Path) -> Result<ParsedSnapshot> {
                 snapshot.types = parse_types_page(&html, &page.source_url)?;
             }
             SnapshotPageKind::Interface => {
-                // todo!()
+                let html = fs::read_to_string(&path)
+                    .with_context(|| format!("failed to read {}", path.display()))?;
+                let mut parsed = parse_interface_page(&html, &page.source_url)?;
+
+                if let Some((label, pattern)) = snapshot.object_path_families.iter().find_map(|family| {
+                    family
+                        .interfaces
+                        .iter()
+                        .find(|iface| iface.name == parsed.name)
+                        .map(|_| (family.label.clone(), family.path_pattern.clone()))
+                }) {
+                    parsed.object_path_family_label = Some(label);
+                    parsed.object_path_pattern = pattern;
+                }
+
+                snapshot.interfaces.push(parsed);
             }
             SnapshotPageKind::SpecIndex | SnapshotPageKind::Other => {}
         }

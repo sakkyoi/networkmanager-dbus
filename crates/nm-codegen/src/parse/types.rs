@@ -1,9 +1,14 @@
 use anyhow::{Result, anyhow};
 use scraper::{ElementRef, Html, Selector};
 
-use crate::model::{
-    common::Version,
-    types::{EnumDef, EnumValue, TypesPage},
+use crate::{
+    parse::common::{
+        collect_doc_lines_after_heading,
+        collect_doc_lines_from_container,
+        extract_since_and_deprecated,
+        normalize_text,
+    },
+    model::types::{EnumDef, EnumValue, TypesPage},
 };
 
 pub fn parse_types_page(html: &str, base_url: &str) -> Result<TypesPage> {
@@ -38,7 +43,7 @@ pub fn parse_types_page(html: &str, base_url: &str) -> Result<TypesPage> {
             continue;
         };
 
-        let description = collect_doc_lines_after_h3(&h3);
+        let description = collect_doc_lines_after_heading(&h3);
         let (enum_since, enum_deprecated) = extract_since_and_deprecated(&description);
 
         let values_section = find_values_section(&section, &refsect3_sel, &h4_sel);
@@ -138,168 +143,4 @@ fn find_enum_anchor(section: &ElementRef<'_>) -> Option<String> {
     }
 
     None
-}
-
-fn collect_doc_lines_after_heading(heading: &ElementRef<'_>) -> Vec<String> {
-    let mut lines = Vec::new();
-    let mut current = heading.next_sibling();
-
-    while let Some(node) = current {
-        current = node.next_sibling();
-
-        let Some(el) = ElementRef::wrap(node) else {
-            continue;
-        };
-
-        let class_list = el.value().classes().collect::<Vec<_>>();
-        if class_list
-            .iter()
-            .any(|c| *c == "refsect2" || *c == "refsect3")
-        {
-            break;
-        }
-
-        let tag = el.value().name();
-        if matches!(tag, "p" | "ul" | "ol") {
-            lines.extend(extract_doc_lines_from_node(&el));
-        }
-    }
-
-    trim_trailing_blank_lines(&mut lines);
-    lines
-}
-
-fn collect_doc_lines_after_h3(h3: &ElementRef<'_>) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    let mut next = h3.next_sibling();
-    while let Some(node) = next {
-        if let Some(el) = ElementRef::wrap(node) {
-            let class_list = el.value().classes().collect::<Vec<_>>();
-            if class_list
-                .iter()
-                .any(|c| *c == "refsect3" || *c == "refsect2")
-            {
-                break;
-            }
-
-            let tag = el.value().name();
-            if matches!(tag, "p" | "ul" | "ol") {
-                lines.extend(extract_doc_lines_from_node(&el));
-            }
-        }
-
-        next = node.next_sibling();
-    }
-
-    trim_trailing_blank_lines(&mut lines);
-    lines
-}
-
-fn collect_doc_lines_from_container(container: ElementRef<'_>) -> Vec<String> {
-    let mut lines = Vec::new();
-
-    for child in container.children() {
-        if let Some(el) = ElementRef::wrap(child) {
-            let tag = el.value().name();
-            if matches!(tag, "p" | "ul" | "ol") {
-                lines.extend(extract_doc_lines_from_node(&el));
-            }
-        }
-    }
-
-    trim_trailing_blank_lines(&mut lines);
-    lines
-}
-
-fn extract_doc_lines_from_node(node: &ElementRef<'_>) -> Vec<String> {
-    match node.value().name() {
-        "p" => {
-            let text = normalize_text(&node.text().collect::<String>());
-            if text.is_empty() {
-                vec![]
-            } else {
-                vec![text, String::new()]
-            }
-        }
-        "ul" => {
-            let li_sel = Selector::parse("li").unwrap();
-            let mut lines = Vec::new();
-
-            for li in node.select(&li_sel) {
-                let text = normalize_text(&li.text().collect::<String>());
-                if !text.is_empty() {
-                    lines.push(format!("- {}", text));
-                }
-            }
-
-            if !lines.is_empty() {
-                lines.push(String::new());
-            }
-
-            lines
-        }
-        "ol" => {
-            let li_sel = Selector::parse("li").unwrap();
-            let mut lines = Vec::new();
-
-            for (i, li) in node.select(&li_sel).enumerate() {
-                let text = normalize_text(&li.text().collect::<String>());
-                if !text.is_empty() {
-                    lines.push(format!("{}. {}", i + 1, text));
-                }
-            }
-
-            if !lines.is_empty() {
-                lines.push(String::new());
-            }
-
-            lines
-        }
-        _ => vec![],
-    }
-}
-
-fn extract_since_and_deprecated(lines: &[String]) -> (Option<Version>, Option<Version>) {
-    let joined = lines.join("\n");
-    let since = extract_version_after(&joined, "Since:");
-    let deprecated = extract_version_after(&joined, "Deprecated:");
-    (since, deprecated)
-}
-
-fn extract_version_after(text: &str, marker: &str) -> Option<Version> {
-    let idx = text.find(marker)?;
-    let tail = text[idx + marker.len()..].trim_start();
-
-    let mut raw = String::new();
-    for ch in tail.chars() {
-        if ch.is_ascii_digit() || ch == '.' {
-            raw.push(ch);
-        } else {
-            break;
-        }
-    }
-
-    parse_version(&raw)
-}
-
-fn parse_version(raw: &str) -> Option<Version> {
-    let mut parts = raw.split(".");
-    let major = parts.next()?.parse().ok()?;
-    let minor = parts.next()?.parse().ok()?;
-    Some(Version { major, minor })
-}
-
-fn trim_trailing_blank_lines(lines: &mut Vec<String>) {
-    while matches!(lines.last(), Some(last) if last.is_empty()) {
-        lines.pop();
-    }
-}
-
-fn normalize_text(input: &str) -> String {
-    input
-        .replace("\u{a0}", " ")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
 }
