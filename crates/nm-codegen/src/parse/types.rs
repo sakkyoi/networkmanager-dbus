@@ -10,6 +10,7 @@ pub fn parse_types_page(html: &str, base_url: &str) -> Result<TypesPage> {
     let doc = Html::parse_document(html);
 
     let section_sel = Selector::parse(".refsect2").unwrap();
+    let h2_sel = Selector::parse("h2").unwrap();
     let h3_sel = Selector::parse("h3").unwrap();
     let refsect3_sel = Selector::parse(".refsect3").unwrap();
     let h4_sel = Selector::parse("h4").unwrap();
@@ -17,6 +18,12 @@ pub fn parse_types_page(html: &str, base_url: &str) -> Result<TypesPage> {
     let name_sel = Selector::parse(".enum_member_name p").unwrap();
     let value_sel = Selector::parse(".enum_member_value code").unwrap();
     let desc_cell_sel = Selector::parse(".enum_member_description").unwrap();
+
+    let page_description = doc
+        .select(&h2_sel)
+        .next()
+        .map(|h2| collect_doc_lines_after_heading(&h2))
+        .unwrap_or_default();
 
     let mut enums = Vec::new();
 
@@ -91,7 +98,11 @@ pub fn parse_types_page(html: &str, base_url: &str) -> Result<TypesPage> {
         }
     }
 
-    Ok(TypesPage { enums })
+    Ok(TypesPage {
+        description: page_description,
+        source_url: Some(base_url.to_string()),
+        enums,
+    })
 }
 
 fn find_values_section<'a>(
@@ -127,6 +138,32 @@ fn find_enum_anchor(section: &ElementRef<'_>) -> Option<String> {
     }
 
     None
+}
+
+fn collect_doc_lines_after_heading(heading: &ElementRef<'_>) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut current = heading.next_sibling();
+
+    while let Some(node) = current {
+        current = node.next_sibling();
+
+        let Some(el) = ElementRef::wrap(node) else {
+            continue;
+        };
+
+        let class_list = el.value().classes().collect::<Vec<_>>();
+        if class_list.iter().any(|c| *c == "refsect2" || *c == "refsect3") {
+            break;
+        }
+
+        let tag = el.value().name();
+        if matches!(tag, "p" | "ul" | "ol") {
+            lines.extend(extract_doc_lines_from_node(&el));
+        }
+    }
+
+    trim_trailing_blank_lines(&mut lines);
+    lines
 }
 
 fn collect_doc_lines_after_h3(h3: &ElementRef<'_>) -> Vec<String> {

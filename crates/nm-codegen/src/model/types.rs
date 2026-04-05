@@ -2,6 +2,8 @@ use crate::model::common::Version;
 
 #[derive(Debug, Clone, Default)]
 pub struct TypesPage {
+    pub description: Vec<String>,
+    pub source_url: Option<String>,
     pub enums: Vec<EnumDef>,
 }
 
