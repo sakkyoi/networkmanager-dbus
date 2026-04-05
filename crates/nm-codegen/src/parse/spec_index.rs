@@ -1,6 +1,8 @@
 use anyhow::{Result, anyhow};
 use scraper::{ElementRef, Html};
 
+use crate::parse::common::normalize_text;
+
 #[derive(Debug, Clone)]
 pub struct SpecToc {
     pub entries: Vec<SpecTocEntry>,
@@ -188,10 +190,3 @@ fn find_first_anchor_href(root: &ElementRef<'_>) -> Option<String> {
     None
 }
 
-fn normalize_text(input: &str) -> String {
-    input
-        .replace("\u{a0}", "")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
-}

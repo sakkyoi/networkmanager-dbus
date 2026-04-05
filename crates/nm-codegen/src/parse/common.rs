@@ -2,23 +2,18 @@ use scraper::{ElementRef, Html, Selector};
 
 use crate::model::common::Version;
 
+#[derive(Debug, Clone)]
+pub struct ParsedSectionDetail {
+    pub title: String,
+    pub source_url: Option<String>,
+    pub description: Vec<String>,
+    pub since: Option<Version>,
+    pub deprecated: Option<Version>,
+}
+
 pub fn find_refentry<'a>(doc: &'a Html) -> Option<ElementRef<'a>> {
-    first_with_class_in_html(doc, "refentry")
-}
-
-pub fn first_with_class_in_html<'a>(doc: &'a Html, class_name: &str) -> Option<ElementRef<'a>> {
-    let selector = Selector::parse(&format!(".{class_name}")).unwrap();
+    let selector = Selector::parse(".refentry").unwrap();
     doc.select(&selector).next()
-}
-
-pub fn fist_with_class<'a>(root: &'a ElementRef<'a>, class_name: &str) -> Option<ElementRef<'a>> {
-    let selector = Selector::parse(&format!(".{class_name}")).unwrap();
-    root.select(&selector).next()
-}
-
-pub fn all_with_class<'a>(root: &'a ElementRef<'a>, class_name: &str) -> Vec<ElementRef<'a>> {
-    let selector = Selector::parse(&format!(".{class_name}")).unwrap();
-    root.select(&selector).collect()
 }
 
 pub fn direct_children<'a>(root: &'a ElementRef<'a>) -> Vec<ElementRef<'a>> {
@@ -33,26 +28,6 @@ pub fn direct_children_with_class<'a>(
         .into_iter()
         .filter(|el| has_class(el, class_name))
         .collect()
-}
-
-pub fn direct_children_with_any_ref_class<'a>(root: &'a ElementRef<'a>) -> Vec<ElementRef<'a>> {
-    direct_children(root)
-        .into_iter()
-        .filter(has_any_ref_class)
-        .collect()
-}
-
-pub fn first_direct_child_with_class<'a>(
-    root: &'a ElementRef<'a>,
-    class_name: &str,
-) -> Option<ElementRef<'a>> {
-    direct_children(root)
-        .into_iter()
-        .find(|el| has_class(el, class_name))
-}
-
-pub fn element_classes(el: &ElementRef<'_>) -> Vec<String> {
-    el.value().classes().map(ToString::to_string).collect()
 }
 
 pub fn has_class(el: &ElementRef<'_>, class_name: &str) -> bool {
@@ -81,14 +56,7 @@ pub fn first_tag<'a>(root: &'a ElementRef<'a>, tag_name: &str) -> Option<Element
     root.select(&selector).next()
 }
 
-pub fn first_tag_text(root: &ElementRef<'_>, tag_name: &str) -> Option<String> {
-    first_tag(root, tag_name).map(|el| normalize_text(&el.text().collect::<String>()))
-}
-
-pub fn find_anchor_name_before_stop_tags(
-    root: &ElementRef<'_>,
-    stop_tags: &[&str],
-) -> Option<String> {
+pub fn find_anchor_name_before_heading(root: &ElementRef<'_>) -> Option<String> {
     for child in root.children() {
         let Some(el) = ElementRef::wrap(child) else {
             continue;
@@ -100,7 +68,7 @@ pub fn find_anchor_name_before_stop_tags(
             }
         }
 
-        if stop_tags.iter().any(|tag| *tag == el.value().name()) {
+        if matches!(el.value().name(), "h1" | "h2" | "h3" | "h4" | "h5" | "h6") {
             break;
         }
     }
@@ -108,8 +76,47 @@ pub fn find_anchor_name_before_stop_tags(
     None
 }
 
-pub fn find_anchor_name_before_heading(root: &ElementRef<'_>) -> Option<String> {
-    find_anchor_name_before_stop_tags(root, &["h1", "h2", "h3", "h4", "h5", "h6"])
+pub fn source_url_from_section_anchor(section: &ElementRef<'_>, base_url: &str) -> Option<String> {
+    find_anchor_name_before_heading(section)
+        .map(|anchor| format!("{base_url}#{anchor}"))
+        .or_else(|| Some(base_url.to_string()))
+}
+
+pub fn parse_refentry_page_identity(refentry: &ElementRef<'_>) -> (String, Vec<String>) {
+    let page_name = direct_children_with_class(refentry, "refnamediv")
+        .into_iter()
+        .find_map(|div| first_heading_text(&div))
+        .or_else(|| first_heading_text(refentry))
+        .unwrap_or_default();
+
+    let page_description = direct_children_with_class(refentry, "refnamediv")
+        .into_iter()
+        .find_map(|div| {
+            let heading = first_tag(&div, "h2")?;
+            Some(collect_doc_lines_after_heading(&heading))
+        })
+        .unwrap_or_default();
+
+    (page_name, page_description)
+}
+
+pub fn parse_section_detail(
+    section: &ElementRef<'_>,
+    heading_tag: &str,
+    base_url: &str,
+) -> Option<ParsedSectionDetail> {
+    let heading = first_tag(section, heading_tag)?;
+    let title = normalize_text(&heading.text().collect::<String>());
+    let description = collect_doc_lines_after_heading(&heading);
+    let (since, deprecated) = extract_since_and_deprecated(&description);
+
+    Some(ParsedSectionDetail {
+        title,
+        source_url: source_url_from_section_anchor(section, base_url),
+        description,
+        since,
+        deprecated,
+    })
 }
 
 pub fn collect_doc_lines_after_heading(heading: &ElementRef<'_>) -> Vec<String> {

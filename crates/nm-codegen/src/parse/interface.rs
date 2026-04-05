@@ -8,9 +8,9 @@ use crate::{
         },
     },
     parse::common::{
-        collect_doc_lines_after_heading, direct_children_with_class, extract_since_and_deprecated,
-        find_anchor_name_before_heading, find_refentry, first_heading_text, first_tag, normalize_text,
-        collect_doc_lines_from_container,
+        collect_doc_lines_from_container, direct_children_with_class, extract_since_and_deprecated,
+        find_refentry, first_heading_text, first_tag, normalize_text,
+        parse_refentry_page_identity, parse_section_detail,
     },
 };
 
@@ -23,7 +23,7 @@ pub fn parse_interface_page(html: &str, base_url: &str) -> Result<InterfaceDef> 
         });
     };
 
-    let (page_name, page_description) = parse_page_identity(&refentry);
+    let (page_name, page_description) = parse_refentry_page_identity(&refentry);
     let (page_since, page_deprecated) = extract_since_and_deprecated(&page_description);
 
     let mut methods = Vec::new();
@@ -75,102 +75,62 @@ pub fn parse_interface_page(html: &str, base_url: &str) -> Result<InterfaceDef> 
     })
 }
 
-fn parse_page_identity(refentry: &ElementRef<'_>) -> (String, Vec<String>) {
-    let page_name = direct_children_with_class(refentry, "refnamediv")
-        .into_iter()
-        .find_map(|div| first_heading_text(&div))
-        .or_else(|| first_heading_text(refentry))
-        .unwrap_or_default();
-
-    let page_description = direct_children_with_class(refentry, "refnamediv")
-        .into_iter()
-        .find_map(|div| {
-            let heading = first_tag(&div, "h2")?;
-            Some(collect_doc_lines_after_heading(&heading))
-        })
-        .unwrap_or_default();
-
-    (page_name, page_description)
-}
-
 fn parse_method_detail(section: &ElementRef<'_>, base_url: &str) -> Option<MethodDef> {
-    let heading = first_tag(section, "h3")?;
-    let raw_name = normalize_text(&heading.text().collect::<String>());
-    let name = normalize_member_title(&raw_name, "method");
+    let detail = parse_section_detail(section, "h3", base_url)?;
+    let name = normalize_member_title(&detail.title, "method");
     if name.is_empty() {
         return None;
     }
 
-    let source_url = find_anchor_name_before_heading(section)
-        .map(|anchor| format!("{base_url}#{anchor}"))
-        .or_else(|| Some(base_url.to_string()));
-
-    let description = collect_doc_lines_after_heading(&heading);
-    let (since, deprecated) = extract_since_and_deprecated(&description);
     let (inputs, outputs) = parse_method_args(section);
 
     Some(MethodDef {
         name,
-        source_url,
-        description,
-        since,
-        deprecated,
+        source_url: detail.source_url,
+        description: detail.description,
+        since: detail.since,
+        deprecated: detail.deprecated,
         inputs,
         outputs,
     })
 }
 
 fn parse_signal_detail(section: &ElementRef<'_>, base_url: &str) -> Option<SignalDef> {
-    let heading = first_tag(section, "h3")?;
-    let raw_name = normalize_text(&heading.text().collect::<String>());
-    let name = normalize_member_title(&raw_name, "signal");
+    let detail = parse_section_detail(section, "h3", base_url)?;
+    let name = normalize_member_title(&detail.title, "signal");
 
     if name.is_empty() {
         return None;
     }
 
-    let source_url = find_anchor_name_before_heading(section)
-        .map(|anchor| format!("{base_url}#{anchor}"))
-        .or_else(|| Some(base_url.to_string()));
-
-    let description = collect_doc_lines_after_heading(&heading);
-    let (since, deprecated) = extract_since_and_deprecated(&description);
     let args = parse_signal_args(section);
 
     Some(SignalDef {
         name,
-        source_url,
-        description,
-        since,
-        deprecated,
+        source_url: detail.source_url,
+        description: detail.description,
+        since: detail.since,
+        deprecated: detail.deprecated,
         args,
     })
 }
 
 fn parse_property_detail(section: &ElementRef<'_>, base_url: &str) -> Option<PropertyDef> {
-    let heading = first_tag(section, "h3")?;
-    let raw_name = normalize_text(&heading.text().collect::<String>());
-    let name = normalize_member_title(&raw_name, "property");
+    let detail = parse_section_detail(section, "h3", base_url)?;
+    let name = normalize_member_title(&detail.title, "property");
 
     if name.is_empty() {
         return None;
     }
 
-    let source_url = find_anchor_name_before_heading(section)
-        .map(|anchor| format!("{base_url}#{anchor}"))
-        .or_else(|| Some(base_url.to_string()));
-
-    let description = collect_doc_lines_after_heading(&heading);
-    let (since, deprecated) = extract_since_and_deprecated(&description);
-
     let (access, signature) = parse_property_pre_fields(section)?;
 
     Some(PropertyDef {
         name,
-        source_url,
-        description,
-        since,
-        deprecated,
+        source_url: detail.source_url,
+        description: detail.description,
+        since: detail.since,
+        deprecated: detail.deprecated,
         signature: Some(signature),
         access: Some(access),
     })
