@@ -1,6 +1,6 @@
 use futures_util::{Stream, StreamExt};
 use serde::de::DeserializeOwned;
-use zbus::{message::Message};
+use zbus::message::Message;
 use zvariant::Type;
 
 use crate::proxy_access::HasProxy;
@@ -118,11 +118,7 @@ pub trait SignalAccess: HasProxy {
         T: DeserializeOwned + Type,
     {
         let stream = self.proxy().receive_signal(name).await?;
-        Ok(stream.map(|msg| {
-            msg.body()
-                .deserialize::<T>()
-                .map_err(Into::into)
-        }))
+        Ok(stream.map(|msg| msg.body().deserialize::<T>().map_err(Into::into)))
     }
 }
 

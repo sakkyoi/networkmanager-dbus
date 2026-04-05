@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use scraper::{ElementRef, Html};
 
 #[derive(Debug, Clone)]
@@ -32,13 +32,13 @@ pub fn parse_spec_toc(html: &str) -> Result<SpecToc> {
             .map(parse_interface_list_dl)
             .unwrap_or_default();
 
-        entries.push(SpecTocEntry{
+        entries.push(SpecTocEntry {
             object_path_label,
             interfaces,
         });
     }
 
-    Ok(SpecToc{ entries })
+    Ok(SpecToc { entries })
 }
 
 fn parse_interface_list_dl(dl: ElementRef<'_>) -> Vec<SpecTocInterface> {
@@ -163,7 +163,11 @@ fn extract_refpurpose(dt: &ElementRef<'_>) -> String {
         if classes.iter().any(|c| *c == "refpurpose") {
             let raw = normalize_text(&el.text().collect::<String>());
             // I'm not sure if there is a leading space or not so we trim both of those two cases
-            return raw.trim_start_matches(" — ").trim_start_matches("— ").trim_start().to_string();
+            return raw
+                .trim_start_matches(" — ")
+                .trim_start_matches("— ")
+                .trim_start()
+                .to_string();
         }
     }
 

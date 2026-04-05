@@ -8,15 +8,11 @@ pub mod render;
 use anyhow::Result;
 use std::{fs, path::Path};
 
-pub use config::{load_render_config, RenderConfig, ReprKind};
+pub use config::{RenderConfig, ReprKind, load_render_config};
 pub use fetch::spec::fetch_spec_snapshot;
 pub use model::{
     spec::{
-        FetchedPage,
-        ObjectPathFamilyRecord,
-        SnapshotManifest,
-        SnapshotPageKind,
-        TocInterfaceRecord,
+        FetchedPage, ObjectPathFamilyRecord, SnapshotManifest, SnapshotPageKind, TocInterfaceRecord,
     },
     types::{EnumDef, EnumValue},
 };

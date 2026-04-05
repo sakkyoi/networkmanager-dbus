@@ -17,16 +17,6 @@ pub struct EnumDef {
     pub deprecated: Option<Version>,
 }
 
-impl EnumDef {
-    pub fn is_bitflags_by_value(&self) -> bool {
-        self.values.iter().any(|v| v.is_hex())
-    }
-
-    pub fn has_negative_value(&self) -> bool {
-        self.values.iter().any(|v| v.has_negative_sign())
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct EnumValue {
     pub name: String,

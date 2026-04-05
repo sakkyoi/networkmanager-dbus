@@ -7,8 +7,7 @@ pub fn write_text_file(path: &Path, content: &str) -> Result<()> {
             .with_context(|| format!("failed to create {}", parent.display()))?;
     }
 
-    fs::write(path, content)
-        .with_context(|| format!("failed to write {}", path.display()))?;
+    fs::write(path, content).with_context(|| format!("failed to write {}", path.display()))?;
 
     Ok(())
 }

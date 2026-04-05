@@ -156,7 +156,7 @@ where
     /// - The D-Bus call fails
     pub async fn set<'t>(&self, value: W) -> zbus::fdo::Result<()>
     where
-        W: 't + Into<Value<'t>>
+        W: 't + Into<Value<'t>>,
     {
         self.owner.proxy().set_property(self.name, value).await
     }

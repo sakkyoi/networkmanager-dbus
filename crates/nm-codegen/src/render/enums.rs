@@ -2,7 +2,7 @@ use crate::{
     config::{RenderConfig, ReprKind},
     model::{
         common::Version,
-        types::{TypesPage, EnumDef, EnumValue},
+        types::{EnumDef, EnumValue, TypesPage},
     },
 };
 
@@ -18,21 +18,22 @@ pub fn render_types_module(types_page: &TypesPage, config: &RenderConfig) -> Str
         out.push_str("\n");
     }
 
-    let visible_enums: Vec<&EnumDef> = types_page
+    let visible_enums: Vec<EnumAnalysis<'_>> = types_page
         .enums
         .iter()
         .filter(|e| is_visible_since(e.since.as_ref(), config.target_version.as_ref()))
+        .map(|e| EnumAnalysis::new(e, config))
         .collect();
 
-    if visible_enums.iter().any(|e| e.is_bitflags_by_value()) {
+    if visible_enums.iter().any(EnumAnalysis::is_bitflags) {
         out.push_str("use bitflags::bitflags;\n\n");
     }
 
-    for en in visible_enums {
-        maybe_warn_bitflags_misclassification(en, config);
-        maybe_warn_duplicate_values(en, config);
+    for analysis in &visible_enums {
+        maybe_warn_bitflags_misclassification(analysis);
+        maybe_warn_duplicate_values(analysis);
 
-        if let Some(rendered) = render_enum(en, config) {
+        if let Some(rendered) = render_enum(analysis, config) {
             out.push_str(&rendered);
             out.push_str("\n\n");
         }
@@ -41,37 +42,26 @@ pub fn render_types_module(types_page: &TypesPage, config: &RenderConfig) -> Str
     out
 }
 
-pub fn render_enum(e: &EnumDef, config: &RenderConfig) -> Option<String> {
-    if e.is_bitflags_by_value() {
-        render_bitflags(e, config)
+fn render_enum(analysis: &EnumAnalysis<'_>, config: &RenderConfig) -> Option<String> {
+    if analysis.is_bitflags() {
+        render_bitflags(analysis, config)
     } else {
-        render_normal_enum(e, config)
+        render_normal_enum(analysis, config)
     }
 }
 
-fn render_normal_enum(e: &EnumDef, config: &RenderConfig) -> Option<String> {
+fn render_normal_enum(analysis: &EnumAnalysis<'_>, config: &RenderConfig) -> Option<String> {
     let target = config.target_version.as_ref();
-    let repr = detect_repr(e, config);
+    let e = analysis.enum_def;
+    let repr = analysis.repr;
     let repr_ty = repr.rust_type();
     let normalizer = NameNormalizer::new(e, config);
-    let groups = group_values_by_numeric(e, config);
+    let canonical_groups = analysis.canonical_groups(target);
+    let alias_groups = analysis.aliases(target);
 
-    if groups.is_empty() {
+    if canonical_groups.is_empty() {
         return None;
     }
-
-    let canonical_groups: Vec<CanonicalGroup<'_>> = groups
-        .iter()
-        .map(|group| {
-            let canonical = pick_canonical_entry(&group.entries, target);
-            CanonicalGroup {
-                value: group.value,
-                canonical,
-            }
-        })
-        .collect();
-
-    let alias_groups = collect_aliases(&groups, target);
 
     let mut out = String::new();
 
@@ -180,14 +170,11 @@ fn render_normal_enum(e: &EnumDef, config: &RenderConfig) -> Option<String> {
     Some(out)
 }
 
-fn render_bitflags(e: &EnumDef, config: &RenderConfig) -> Option<String> {
+fn render_bitflags(analysis: &EnumAnalysis<'_>, config: &RenderConfig) -> Option<String> {
     let target = config.target_version.as_ref();
+    let e = analysis.enum_def;
     let normalizer = NameNormalizer::new(e, config);
-    let visible_values: Vec<&EnumValue> = e
-        .values
-        .iter()
-        .filter(|v| is_visible_since(v.since.as_ref(), target))
-        .collect();
+    let visible_values = &analysis.visible_values;
 
     if visible_values.is_empty() {
         return None;
@@ -230,17 +217,12 @@ fn render_bitflags(e: &EnumDef, config: &RenderConfig) -> Option<String> {
     Some(out)
 }
 
-fn detect_repr(e: &EnumDef, config: &RenderConfig) -> ReprKind {
+fn detect_repr(e: &EnumDef, visible_values: &[&EnumValue], config: &RenderConfig) -> ReprKind {
     if let Some(repr) = config.repr_overrides.get(&e.name) {
         return *repr;
     }
 
-    let target = config.target_version.as_ref();
-    let has_negative = e
-        .values
-        .iter()
-        .filter(|v| is_visible_since(v.since.as_ref(), target))
-        .any(|v| v.has_negative_sign());
+    let has_negative = visible_values.iter().any(|v| v.has_negative_sign());
 
     if has_negative {
         ReprKind::I32
@@ -379,7 +361,12 @@ impl<'a> NameNormalizer<'a> {
             result = "Unknown".to_string();
         }
 
-        if result.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        if result
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+        {
             result = format!("_{}", result);
         }
 
@@ -410,7 +397,12 @@ impl<'a> NameNormalizer<'a> {
             result = "Unknown".to_string();
         }
 
-        if result.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+        if result
+            .chars()
+            .next()
+            .map(|c| c.is_ascii_digit())
+            .unwrap_or(false)
+        {
             result = format!("_{}", result);
         }
 
@@ -501,8 +493,7 @@ fn camel_to_screaming_snake(input: &str) -> String {
             && ch.is_ascii_uppercase()
             && (prev.is_some_and(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
                 || (prev.is_some_and(|c| c.is_ascii_uppercase()))
-                    && next.is_some_and(|c| c.is_ascii_lowercase())
-                );
+                    && next.is_some_and(|c| c.is_ascii_lowercase()));
 
         if is_boundary {
             out.push('_');
@@ -527,22 +518,16 @@ fn pascal_part(part: &str) -> String {
     }
 }
 
-fn maybe_warn_bitflags_misclassification(e: &EnumDef, config: &RenderConfig) {
-    let visible_values: Vec<&EnumValue> = e
-        .values
-        .iter()
-        .filter(|v| is_visible_since(v.since.as_ref(), config.target_version.as_ref()))
-        .collect();
-
-    let has_hex = visible_values.iter().any(|v| v.is_hex());
-    let numeric_shape = classify_numeric_shape_refs(&visible_values);
+fn maybe_warn_bitflags_misclassification(analysis: &EnumAnalysis<'_>) {
+    let has_hex = analysis.is_bitflags();
+    let numeric_shape = classify_numeric_shape_refs(&analysis.visible_values);
 
     match (has_hex, numeric_shape) {
         (true, NumericShape::NotBitflagsLike) => {
             eprintln!(
                 "[WARN] enum {:?} was generated as bitflags because values are hex-formatted, \
                 but the numeric pattern does not look like a typical bitflags set",
-                e.name
+                analysis.enum_def.name
             );
         }
 
@@ -550,7 +535,7 @@ fn maybe_warn_bitflags_misclassification(e: &EnumDef, config: &RenderConfig) {
             eprintln!(
                 "[WARN] enum {:?} was generated as a normal enum, \
                 but the numeric pattern looks like bitflags (all non-zero values are powers of two)",
-                e.name
+                analysis.enum_def.name
             );
         }
 
@@ -558,10 +543,8 @@ fn maybe_warn_bitflags_misclassification(e: &EnumDef, config: &RenderConfig) {
     }
 }
 
-fn maybe_warn_duplicate_values(e: &EnumDef, config: &RenderConfig) {
-    let groups = group_values_by_numeric(e, config);
-
-    for group in groups {
+fn maybe_warn_duplicate_values(analysis: &EnumAnalysis<'_>) {
+    for group in &analysis.value_groups {
         if group.entries.len() > 1 {
             let names = group
                 .entries
@@ -572,7 +555,7 @@ fn maybe_warn_duplicate_values(e: &EnumDef, config: &RenderConfig) {
 
             eprintln!(
                 "[WARN] enum {:?} has multiple visible names for value {}: {}",
-                e.name, group.value, names
+                analysis.enum_def.name, group.value, names
             );
         }
     }
@@ -648,22 +631,69 @@ struct AliasEntry<'a> {
     alias: &'a EnumValue,
 }
 
-fn group_values_by_numeric<'a>(e: &'a EnumDef, config: &RenderConfig) -> Vec<ValueGroup<'a>> {
+struct EnumAnalysis<'a> {
+    enum_def: &'a EnumDef,
+    visible_values: Vec<&'a EnumValue>,
+    value_groups: Vec<ValueGroup<'a>>,
+    repr: ReprKind,
+    bitflags: bool,
+}
+
+impl<'a> EnumAnalysis<'a> {
+    fn new(e: &'a EnumDef, config: &RenderConfig) -> Self {
+        let target = config.target_version.as_ref();
+        let visible_values: Vec<&EnumValue> = e
+            .values
+            .iter()
+            .filter(|v| is_visible_since(v.since.as_ref(), target))
+            .collect();
+        let value_groups = group_values_by_numeric(&visible_values);
+        let repr = detect_repr(e, &visible_values, config);
+        let bitflags = visible_values.iter().any(|v| v.is_hex());
+
+        Self {
+            enum_def: e,
+            visible_values,
+            value_groups,
+            repr,
+            bitflags,
+        }
+    }
+
+    fn is_bitflags(&self) -> bool {
+        self.bitflags
+    }
+
+    fn canonical_groups(&self, target_version: Option<&Version>) -> Vec<CanonicalGroup<'a>> {
+        self.value_groups
+            .iter()
+            .map(|group| {
+                let canonical = pick_canonical_entry(&group.entries, target_version);
+                CanonicalGroup {
+                    value: group.value,
+                    canonical,
+                }
+            })
+            .collect()
+    }
+
+    fn aliases(&self, target_version: Option<&Version>) -> Vec<AliasEntry<'a>> {
+        collect_aliases(&self.value_groups, target_version)
+    }
+}
+
+fn group_values_by_numeric<'a>(visible_values: &[&'a EnumValue]) -> Vec<ValueGroup<'a>> {
     let mut groups: Vec<ValueGroup<'a>> = Vec::new();
 
-    for value in e
-        .values
-        .iter()
-        .filter(|v| is_visible_since(v.since.as_ref(), config.target_version.as_ref()))
-    {
+    for value in visible_values {
         let key = value.value.trim();
 
         if let Some(group) = groups.iter_mut().find(|g| g.value == key) {
-            group.entries.push(value);
+            group.entries.push(*value);
         } else {
             groups.push(ValueGroup {
                 value: key,
-                entries: vec![value],
+                entries: vec![*value],
             });
         }
     }
@@ -717,7 +747,7 @@ fn compare_option_version(a: Option<&Version>, b: Option<&Version>) -> std::cmp:
 }
 
 fn collect_aliases<'a>(
-    groups: &'a [ValueGroup<'a>],
+    groups: &[ValueGroup<'a>],
     target_version: Option<&Version>,
 ) -> Vec<AliasEntry<'a>> {
     let mut aliases = Vec::new();

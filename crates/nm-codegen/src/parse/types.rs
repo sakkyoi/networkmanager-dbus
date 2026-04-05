@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use scraper::{ElementRef, Html, Selector};
 
 use crate::model::{
@@ -152,7 +152,10 @@ fn collect_doc_lines_after_heading(heading: &ElementRef<'_>) -> Vec<String> {
         };
 
         let class_list = el.value().classes().collect::<Vec<_>>();
-        if class_list.iter().any(|c| *c == "refsect2" || *c == "refsect3") {
+        if class_list
+            .iter()
+            .any(|c| *c == "refsect2" || *c == "refsect3")
+        {
             break;
         }
 
@@ -173,7 +176,10 @@ fn collect_doc_lines_after_h3(h3: &ElementRef<'_>) -> Vec<String> {
     while let Some(node) = next {
         if let Some(el) = ElementRef::wrap(node) {
             let class_list = el.value().classes().collect::<Vec<_>>();
-            if class_list.iter().any(|c| *c == "refsect3" || *c == "refsect2") {
+            if class_list
+                .iter()
+                .any(|c| *c == "refsect3" || *c == "refsect2")
+            {
                 break;
             }
 

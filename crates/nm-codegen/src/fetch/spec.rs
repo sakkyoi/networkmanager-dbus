@@ -1,14 +1,10 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use std::path::Path;
 use url::Url;
 
 use crate::fetch::snapshot::write_text_file;
 use crate::model::spec::{
-    FetchedPage,
-    ObjectPathFamilyRecord,
-    SnapshotManifest,
-    SnapshotPageKind,
-    TocInterfaceRecord,
+    FetchedPage, ObjectPathFamilyRecord, SnapshotManifest, SnapshotPageKind, TocInterfaceRecord,
 };
 use crate::parse::spec_index::parse_spec_toc;
 
@@ -100,7 +96,6 @@ fn file_name_from_url(url: &Url) -> Option<String> {
     let last = path.split("/").filter(|s| !s.is_empty()).last()?;
     Some(last.to_string())
 }
-
 
 fn classify_toc_interface(title: &str) -> SnapshotPageKind {
     if title.ends_with("Types") {
