@@ -11,7 +11,7 @@ pub struct ParsedSectionDetail {
     pub deprecated: Option<Version>,
 }
 
-pub fn find_refentry<'a>(doc: &'a Html) -> Option<ElementRef<'a>> {
+pub fn find_refentry(doc: &'_ Html) -> Option<ElementRef<'_>> {
     let selector = Selector::parse(".refentry").unwrap();
     doc.select(&selector).next()
 }

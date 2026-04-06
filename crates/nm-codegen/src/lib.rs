@@ -24,6 +24,7 @@ pub fn generate_types_from_snapshot_dir(
     config: &RenderConfig,
 ) -> Result<String> {
     let snapshot = parse_snapshot(snapshot_dir)?;
+    println!("{:#?}", snapshot);
     Ok(render_types_module(&snapshot.types, config))
 }
 

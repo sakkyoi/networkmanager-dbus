@@ -253,10 +253,10 @@ fn parse_property_pre_fields(section: &ElementRef<'_>) -> Option<(PropertyAccess
 
 fn parse_property_access_token(token: &str) -> Option<PropertyAccess> {
     match token {
-        "read" | "readonly" => Some(PropertyAccess::Read),
-        "write" | "writeonly" => Some(PropertyAccess::Write),
-        "readwrite" | "read/write" => Some(PropertyAccess::ReadWrite),
-        _ => None,
+        "readable" => Some(PropertyAccess::Read),
+        "writable" => Some(PropertyAccess::Write),
+        "readwrite" => Some(PropertyAccess::ReadWrite),
+        _ => None
     }
 }
 
