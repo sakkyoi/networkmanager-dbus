@@ -228,8 +228,10 @@ fn extract_doc_lines_from_node(node: &ElementRef<'_>) -> Vec<String> {
 
 pub fn extract_since_and_deprecated(lines: &[String]) -> (Option<Version>, Option<Version>) {
     let joined = lines.join("\n");
-    let since = extract_version_after(&joined, "Since:");
-    let deprecated = extract_version_after(&joined, "Deprecated:");
+    let since = extract_version_after(&joined, "Since:")
+        .or_else(|| extract_version_after(&joined, "Since"));
+    let deprecated = extract_version_after(&joined, "Deprecated:")
+        .or_else(|| extract_version_after(&joined, "Deprecated"));
     (since, deprecated)
 }
 
